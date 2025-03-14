@@ -1,0 +1,21 @@
+[project]
+name = "dap-mcp"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "anyio>=4.8.0",
+    "click>=8.1.8",
+    "dap-types",
+    "debugpy>=1.8.13",
+    "mcp[cli]>=1.4.0",
+]
+
+[tool.uv.sources]
+dap-types = { git = "https://gitea.isp.moe/jchen1192/dap_types.git" }
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "pre-commit>=4.1.0",
+]
