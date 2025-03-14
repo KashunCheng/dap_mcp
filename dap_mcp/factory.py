@@ -1,5 +1,6 @@
-import anyio
-from anyio.abc import Process
+import asyncio.subprocess
+
+from asyncio.subprocess import Process
 from typing import Protocol, Optional
 
 from dap_mcp.dap import DAPClient
@@ -22,7 +23,12 @@ class DAPClientSingletonFactory:
             raise Exception(
                 "DAPClientSingletonFactory can only create one instance of DAPClient"
             )
-        adapter = await anyio.open_process(self.cmd, **self.kwargs)
+        adapter = await asyncio.subprocess.create_subprocess_shell(
+            self.cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            **self.kwargs,
+        )
         reader = adapter.stdout
         writer = adapter.stdin
         assert reader is not None, "Connection closed"

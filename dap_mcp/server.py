@@ -52,7 +52,6 @@ def main(
     debuggee_python: str,
     debug_program_path: str,
 ) -> int:
-    # find_active_loop()
     app: Server[object] = Server("mcp-website-fetcher")
     dap_factory = DAPClientSingletonFactory("python -m debugpy.adapter")
     launch_arguments = LaunchRequestArguments(
@@ -63,10 +62,7 @@ def main(
         cwd=debuggee_cwd,
         env={"PYTHONIOENCODING": "UTF-8", "PYTHONUNBUFFERED": "1"},
     )
-    # find_active_loop()
     debugger = Debugger(dap_factory, debuggee_cwd, launch_arguments)
-
-    # find_active_loop()
 
     async def launch():
         return (await debugger.launch()).render()

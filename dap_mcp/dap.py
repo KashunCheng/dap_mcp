@@ -1,7 +1,6 @@
 import json
 import pydantic_core
-
-from anyio.abc import ByteReceiveStream, ByteSendStream
+from asyncio import StreamReader, StreamWriter
 from dap_types import Request, Response, Event, DiscriminatedProtocolMessage
 from pydantic import TypeAdapter, ValidationError, Field
 from typing import Tuple, Union, Annotated
@@ -11,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class DAPClient:
-    def __init__(self, stream_reader: ByteReceiveStream, stream_writer: ByteSendStream):
+    def __init__(self, stream_reader: StreamReader, stream_writer: StreamWriter):
         self.seq = 1
         self.request_sent: dict[int, Request] = {}
         self.response_received: dict[int, Response] = {}
@@ -35,35 +34,17 @@ class DAPClient:
         headers = f"Content-Length: {len(encoded)}\r\n\r\n".encode("utf-8")
         message = headers + encoded
 
-        await self.stream_writer.send(message)
+        self.stream_writer.write(message)
         logger.debug(f"client -> server: {encoded.decode('utf-8')}")
 
     async def receive(self) -> Request | Response | Event:
         while True:
-            content_length = bytes()
-            consecutive_newlines = 0
-            while content_length[-4:] != b"\r\n\r\n":
-                chunk = await self.stream_reader.receive(max_bytes=1)
-                content_length += chunk
-                if (
-                    consecutive_newlines == 0 or consecutive_newlines == 2
-                ) and chunk == b"\r":
-                    consecutive_newlines += 1
-                elif consecutive_newlines == 1 and chunk == b"\n":
-                    consecutive_newlines += 1
-                elif consecutive_newlines == 3 and chunk == b"\n":
-                    break
-                else:
-                    consecutive_newlines = 0
+            content_length = await self.stream_reader.readuntil(b"\r\n\r\n")
             assert content_length is not None, "Connection closed"
             content_length = int(content_length.decode("utf-8").split(": ")[1])
-            data = bytes()
-            while len(data) < content_length:
-                data = await self.stream_reader.receive(
-                    max_bytes=content_length - len(data)
-                )
-            logger.debug(f"server -> client: {data.decode('utf-8')}")
-            message = json.loads(data)
+            message = await self.stream_reader.readexactly(content_length)
+            logger.debug(f"server -> client: {message.decode('utf-8')}")
+            message = json.loads(message)
             try:
                 protocol_message: Request | Response | Event = (
                     self.protocol_message_adapter.validate_python(message)
