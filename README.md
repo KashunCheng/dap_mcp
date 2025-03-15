@@ -24,7 +24,7 @@ pip install dap-mcp
 python -m dap_mcp --config config.json
 
 # Or, if you have uv installed
-uvx dap-mcp --config config.json
+uvx dap-mcp@latest --config config.json
 ```
 
 ## Configuration
