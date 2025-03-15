@@ -15,12 +15,16 @@
 - Python 3.10 or higher
 - [uv](https://github.com/astral-sh/uv) (optional, for running the server)
 
-### Installing via pip
+### Installing and Running the Server
 
 Install **dap-mcp** and its dependencies:
 
 ```bash
 pip install dap-mcp
+python -m dap_mcp --config config.json
+
+# Or, if you have uv installed
+uvx dap-mcp --config config.json
 ```
 
 ## Configuration
@@ -56,14 +60,6 @@ This configuration informs the debugger about:
 - The path to the debugger executable and its arguments.
 - The source directories for resolving file paths during breakpoint operations.
 - Other settings (such as module, working directory, and interpreter path) necessary for launching the debuggee.
-
-## Usage
-
-The entry point of the project is provided via the command-line interface in the `dap_mcp` module. You can run the project using either standard I/O or Server-Sent Events (SSE).
-
-```bash
-python -m dap_mcp --config config.json
-```
 
 ## Available Tools
 

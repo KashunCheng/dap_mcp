@@ -7,12 +7,19 @@ dependencies = [
     "anyio>=4.8.0",
     "click>=8.1.8",
     "dap-types==20250315!1.70",
-    "debugpy>=1.8.13",
     "mcp[cli]>=1.4.0",
 ]
 
+[project.scripts]
+dap-mcp = "dap_mcp.server:main"
+
 [dependency-groups]
 dev = [
+    "debugpy>=1.8.13",
     "mypy>=1.15.0",
     "pre-commit>=4.1.0",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -68,17 +68,17 @@ wheels = [
 [[package]]
 name = "dap-mcp"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "click" },
     { name = "dap-types" },
-    { name = "debugpy" },
     { name = "mcp", extra = ["cli"] },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "debugpy" },
     { name = "mypy" },
     { name = "pre-commit" },
 ]
@@ -87,13 +87,13 @@ dev = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.8.0" },
     { name = "click", specifier = ">=8.1.8" },
-    { name = "dap-types", specifier = ">=20250315!1.70" },
-    { name = "debugpy", specifier = ">=1.8.13" },
+    { name = "dap-types", specifier = "==20250315!1.70" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.4.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "debugpy", specifier = ">=1.8.13" },
     { name = "mypy", specifier = ">=1.15.0" },
     { name = "pre-commit", specifier = ">=4.1.0" },
 ]
