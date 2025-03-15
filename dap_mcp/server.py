@@ -9,7 +9,7 @@ from typing import Optional
 
 from dap_mcp.debugger import Debugger, RenderableContent
 from dap_mcp.factory import DAPClientSingletonFactory
-from dap_mcp.render import render_xml
+from dap_mcp.render import render_xml, try_dump_base_model
 
 import logging
 
@@ -19,8 +19,12 @@ logging.basicConfig(filename="example.log", encoding="utf-8", level=logging.DEBU
 
 def render_response(r: Response) -> str:
     if isinstance(r, ErrorResponse):
-        return f"<error>{r}</error>"
-    return f"<response>{r}</response>"
+        return render_xml(
+            "error", try_dump_base_model(r.body), command=r.command, message=r.message
+        )
+    return render_xml(
+        "response", try_dump_base_model(r.body), command=r.command, message=r.message
+    )
 
 
 def try_render(r: Response | RenderableContent) -> str:
@@ -79,14 +83,19 @@ def main(
         response = await debugger.list_all_breakpoints()
 
         def render_file(file: str, breakpoints: list[SourceBreakpoint]) -> str:
-            return f"""<file path="{file}">
-{"\n".join([render_xml("breakpoint", None, **sb.model_dump()) for sb in breakpoints])}
-</file>"""
+            return render_xml(
+                file,
+                [
+                    render_xml("breakpoint", None, **sb.model_dump())
+                    for sb in breakpoints
+                ],
+                path=file,
+            )
 
-        return f"""<breakpoints>
-{"\n".join([render_file(file, breakpoints) for file, breakpoints in response.items()])}
-</breakpoints>
-"""
+        return render_xml(
+            "breakpoints",
+            [render_file(file, breakpoints) for file, breakpoints in response.items()],
+        )
 
     async def continue_execution():
         response = await debugger.continue_execution()

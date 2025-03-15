@@ -57,6 +57,7 @@ from typing import Literal, Optional, List, Tuple, Protocol, Callable, Any, Self
 
 from dap_mcp.dap import DAPClient
 from dap_mcp.factory import DAPFactory
+from dap_mcp.render import render_table, render_scope, render_xml, try_dump_base_model
 
 
 class RenderableContent(Protocol):
@@ -67,7 +68,7 @@ class FunctionCallError(BaseModel):
     message: str
 
     def render(self) -> str:
-        return f"<error>{self.message}</error>"
+        return render_xml("error", self.message)
 
 
 @dataclass
@@ -75,24 +76,18 @@ class EventListView:
     events: List[Event]
 
     def render(self) -> str:
-        return f"""<events>
-{"\n".join([str(event) for event in self.events])}
-</events>"""
-
-
-def render_variable(variable: Variable) -> str:
-    return f'<variable name="{variable.name}" type="{variable.type}" variablesReference={variable.variablesReference}>{variable.value}</variable>'
-
-
-def render_scope(scope: Scope, variables: List[Variable]) -> str:
-    return f"""<scope name={scope.name}>
-{"\n".join([render_variable(variable) for variable in variables])}
-</scope>"""
+        return render_xml(
+            "events",
+            [
+                render_xml("event", try_dump_base_model(event.body), type=event.event)
+                for event in self.events
+            ],
+        )
 
 
 @dataclass
 class StoppedDebuggerView:
-    source: str
+    source_code: str
     source_first_line: int
     source_active_line: Optional[int]
     frames: List[StackFrame]
@@ -104,49 +99,61 @@ class StoppedDebuggerView:
     events: EventListView
     exception_info: Optional[ExceptionInfoResponseBody]
 
-    @staticmethod
-    def render_table(active_id: Optional[int], lines: List[Tuple[int, str]]) -> str:
-        # print lines with active line marked
-        # active_id is the index of the active line in lines.
-        # lines: [(line_number, line_content)].
-        # If active_id equals to the index of the line in lines, that line is active.
-        # It will print in the following format:
-        # {line_number} -> {line_content}
-        # {line_number}    {line_content} (otherwise)
-        if len(lines) == 0:
-            return ""
-        max_line_number = max([line_number for line_number, _ in lines])
-        max_line_number_length = len(str(max_line_number))
-        formatted_lines = []
-        for line_number, line_content in lines:
-            if line_number == active_id:
-                formatted_lines.append(
-                    f"{line_number:>{max_line_number_length}} -> {line_content}"
-                )
-            else:
-                formatted_lines.append(
-                    f"{line_number:>{max_line_number_length}}    {line_content}"
-                )
-        return "\n".join(formatted_lines)
-
     def render(self) -> str:
-        return f"""<debugger_view>
-<source>
-{self.render_table(self.source_active_line, [(i + self.source_first_line, line) for i, line in enumerate(self.source.splitlines())])}
-</source>
-<variables>
-{"\n".join([render_scope(scope, variables) for scope, variables in self.variables])}
-</variables>
-<frames>
-{self.render_table(self.frame_active_id, [(frame.id, f"{frame.name}\t{frame.source} line={frame.line} col={frame.column}") for frame in self.frames])}
-</frames>
-<threads>
-{self.render_table(self.thread_active_id, [(thread.id, thread.name) for thread in self.threads])}
-</threads>
-{self.events.render()}
-{f"<exception_info>{self.exception_info}</exception_info>" if self.exception_info else ""}
-</debugger_view>
-"""
+        return render_xml(
+            "debugger_view",
+            [
+                render_xml(
+                    "source",
+                    render_table(
+                        self.source_active_line,
+                        [
+                            (i + self.source_first_line, line)
+                            for i, line in enumerate(self.source_code.splitlines())
+                        ],
+                    ),
+                    # path=self.source
+                ),
+                render_xml(
+                    "variables",
+                    [
+                        render_scope(scope, variables)
+                        for scope, variables in self.variables
+                    ],
+                ),
+                render_xml(
+                    "frames",
+                    render_table(
+                        self.frame_active_id,
+                        [
+                            (
+                                frame.id,
+                                f"{frame.name}\t{frame.source} line={frame.line} col={frame.column}",
+                            )
+                            for frame in self.frames
+                        ],
+                    ),
+                ),
+                render_xml(
+                    "threads",
+                    render_table(
+                        self.thread_active_id,
+                        [(thread.id, thread.name) for thread in self.threads],
+                    ),
+                ),
+                self.events.render(),
+            ]
+            + (
+                [
+                    render_xml(
+                        "exception_info",
+                        f"{self.exception_info.exceptionId} {self.exception_info.description}",
+                    )
+                ]
+                if self.exception_info
+                else []
+            ),
+        )
 
 
 DebuggerState = Literal[
@@ -400,7 +407,7 @@ class Debugger:
         else:
             exception_info = None
         return StoppedDebuggerView(
-            source="",
+            source_code="",
             source_first_line=0,
             source_active_line=None,
             frames=stack_trace.body.stackFrames,
