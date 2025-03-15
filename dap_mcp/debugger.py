@@ -1,6 +1,5 @@
 import logging
 
-import os
 from dap_types import (
     SetBreakpointsResponse,
     ErrorResponse,
@@ -52,16 +51,13 @@ from dap_types import (
     SetExceptionBreakpointsResponse,
 )
 from dataclasses import dataclass
+from pathlib import Path
 from pydantic import BaseModel
-from typing import Literal, Optional, List, Tuple, Protocol, Callable, Any, Self
+from typing import Literal, Optional, List, Tuple, Callable, Any, Self
 
 from dap_mcp.dap import DAPClient
 from dap_mcp.factory import DAPFactory
 from dap_mcp.render import render_table, render_scope, render_xml, try_dump_base_model
-
-
-class RenderableContent(Protocol):
-    def render(self) -> str: ...
 
 
 class FunctionCallError(BaseModel):
@@ -86,10 +82,47 @@ class EventListView:
 
 
 @dataclass
-class StoppedDebuggerView:
-    source_code: str
-    source_first_line: int
+class SourceCodeView:
+    source: Path | None
+    # the line is in the center of the code view
+    source_center_line: int
+    # the line has an arrow pointing to it (active line)
     source_active_line: Optional[int]
+
+    def get_source(self) -> Tuple[List[Tuple[int, str]], int]:
+        if self.source is None:
+            return [], 0
+        with open(self.source, "r") as f:
+            lines = f.readlines()
+        span = 20
+        self.source_center_line = min(len(lines), self.source_center_line)
+        span_begin = max(1, self.source_center_line - span)
+        span_end = min(len(lines), self.source_center_line + span)
+        source = list(
+            zip(range(span_begin, span_end + 1), lines[span_begin - 1 : span_end])
+        )
+        if source:
+            source[-1] = (source[-1][0], source[-1][1].rstrip())
+        return source, len(lines)
+
+    def render(self) -> str:
+        source, line_count = self.get_source()
+        source_view_content = (
+            "!!!source not available!!!"
+            if source == []
+            else render_table(self.source_active_line, source, line_delimiter="")
+        )
+        return render_xml(
+            "source",
+            source_view_content,
+            path=str(self.source.resolve()) if self.source else None,
+            total_lines=line_count,
+        )
+
+
+@dataclass
+class StoppedDebuggerView:
+    source: SourceCodeView
     frames: List[StackFrame]
     frame_active_id: int
     threads: List[Thread]
@@ -103,17 +136,7 @@ class StoppedDebuggerView:
         return render_xml(
             "debugger_view",
             [
-                render_xml(
-                    "source",
-                    render_table(
-                        self.source_active_line,
-                        [
-                            (i + self.source_first_line, line)
-                            for i, line in enumerate(self.source_code.splitlines())
-                        ],
-                    ),
-                    # path=self.source
-                ),
+                self.source.render(),
                 render_xml(
                     "variables",
                     [
@@ -128,7 +151,7 @@ class StoppedDebuggerView:
                         [
                             (
                                 frame.id,
-                                f"{frame.name}\t{frame.source} line={frame.line} col={frame.column}",
+                                f"{frame.name}\tpath={frame.source.path}\tline={frame.line}\tcol={frame.column}",
                             )
                             for frame in self.frames
                         ],
@@ -179,7 +202,7 @@ class Debugger:
         self._factory = factory
         self._client: Optional[DAPClient] = None
         self.project_root = project_root
-        self.breakpoints: dict[str, list[SourceBreakpoint]] = {}
+        self.breakpoints: dict[Path, list[SourceBreakpoint]] = {}
         self.launch_arguments = launch_arguments
         self.launch_request: Optional[LaunchRequest] = None
         self.modules: dict[int, Module] = {}
@@ -188,6 +211,8 @@ class Debugger:
         self.frames: dict[int, StackFrame] = {}
         self.active_frame_id: Optional[int] = None
         self.active_thread_id: Optional[int] = None
+        self.alternative_center_line_to_view: Optional[int] = None
+        self.alternative_file_to_view: Optional[Path] = None
 
     def _get_available_actions(self) -> List[str]:
         func_names: List[str] = []
@@ -290,19 +315,17 @@ class Debugger:
         return response
 
     async def _update_breakpoints(
-        self, path: str
+        self, path: Path
     ) -> SetBreakpointsResponse | ErrorResponse:
         breakpoints = self.breakpoints.get(path, [])
-        name = os.path.basename(path)
-        path = os.path.join(self.project_root, path)
         request = SetBreakpointsRequest(
             seq=0,
             type="request",
             command="setBreakpoints",
             arguments=SetBreakpointsArguments(
                 source=Source(
-                    name=name,
-                    path=path,
+                    name=path.name,
+                    path=str(path.resolve()),
                 ),
                 breakpoints=breakpoints,
             ),
@@ -393,7 +416,13 @@ class Debugger:
 
     async def _get_stopped_debugger_view(self):
         threads = await self._get_threads()
+        assert self.active_thread_id is not None, (
+            "Active thread is not set, this should be set via Events"
+        )
         stack_trace = await self._get_stack_trace(self.active_thread_id)
+        assert self.active_frame_id is not None, (
+            "Active frame is not set, this should be set via Events"
+        )
         scopes = await self._get_scopes(self.active_frame_id)
         variables = [
             (
@@ -406,10 +435,16 @@ class Debugger:
             exception_info = (await self._get_exception_info()).body
         else:
             exception_info = None
+        current_frame = next(
+            f for f in stack_trace.body.stackFrames if f.id == self.active_frame_id
+        )
         return StoppedDebuggerView(
-            source_code="",
-            source_first_line=0,
-            source_active_line=None,
+            source=SourceCodeView(
+                source=self.alternative_file_to_view or Path(current_frame.source.path),
+                source_center_line=self.alternative_center_line_to_view
+                or current_frame.line,
+                source_active_line=current_frame.line,
+            ),
             frames=stack_trace.body.stackFrames,
             frame_active_id=self.active_frame_id,
             threads=threads.body.threads,
@@ -421,7 +456,7 @@ class Debugger:
 
     @available_states("set breakpoint", ["before_launch", "stopped", "errored"])
     async def set_breakpoint(
-        self, path: str, line: int, condition: Optional[str] = None
+        self, path: Path, line: int, condition: Optional[str] = None
     ) -> FunctionCallError | SetBreakpointsResponse | ErrorResponse:
         breakpoints = self.breakpoints.get(path, [])
         for b in breakpoints:
@@ -433,7 +468,7 @@ class Debugger:
 
     @available_states("remove breakpoint", ["before_launch", "stopped", "errored"])
     async def remove_breakpoint(
-        self, path: str, line: int
+        self, path: Path, line: int
     ) -> FunctionCallError | SetBreakpointsResponse | ErrorResponse:
         breakpoints = self.breakpoints.get(path, [])
         breakpoints = [b for b in breakpoints if b.line != line]
@@ -441,7 +476,7 @@ class Debugger:
         return await self._update_breakpoints(path)
 
     @available_states("list all breakpoints", ["before_launch", "stopped", "errored"])
-    async def list_all_breakpoints(self) -> dict[str, list[SourceBreakpoint]]:
+    async def list_all_breakpoints(self) -> dict[Path, list[SourceBreakpoint]]:
         return self.breakpoints
 
     @available_states("continue execution", ["stopped"])
@@ -458,6 +493,8 @@ class Debugger:
         response = await self._wait_for_request(request)
         if isinstance(response, ErrorResponse):
             raise RuntimeError("Error handing for continue is not implemented")
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
         await self._wait_for_event_types({"stopped", "terminated"})
         if self.state != "stopped":
             return EventListView(events=self._pop_events())
@@ -512,18 +549,20 @@ class Debugger:
             seq=0, type="request", command="configurationDone"
         )
         await self._send_request(configure_done_request)
-        response: (
+        configure_done_response: (
             ErrorResponse | ConfigurationDoneRequest
         ) = await self._wait_for_request(configure_done_request)
-        if isinstance(response, ErrorResponse):
+        if isinstance(configure_done_response, ErrorResponse):
             raise RuntimeError(
                 "Error handing for configuration done is not implemented"
             )
-        response: ErrorResponse | LaunchResponse = await self._wait_for_request(
+        launch_response: ErrorResponse | LaunchResponse = await self._wait_for_request(
             self.launch_request
-        )  # type: ignore
-        if isinstance(response, ErrorResponse):
+        )
+        if isinstance(launch_response, ErrorResponse):
             raise RuntimeError("Error handing for launch is not implemented")
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
         await self._wait_for_event_types({"stopped", "terminated"})
         if self.state != "stopped":
             return EventListView(events=self._pop_events())
@@ -538,7 +577,37 @@ class Debugger:
                 message=f"Frame {frame_id} not found, available frames: {list(self.frames.keys())}"
             )
         self.active_frame_id = frame_id
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
         return await self._get_stopped_debugger_view()
+
+    @available_states(
+        "view file at line",
+        ["before_initialization", "before_launch", "launched", "errored", "stopped"],
+    )
+    async def view_file_at_line(
+        self, file: Optional[Path], line: int
+    ) -> SourceCodeView | FunctionCallError:
+        if (
+            file is None
+            and self.alternative_file_to_view is None
+            and self.state in ["before_initialization", "before_launch", "launched"]
+        ):
+            return FunctionCallError(
+                message=f"You must provide a file path to view in {self.state} state"
+            )
+        self.alternative_center_line_to_view = line
+        if file:
+            self.alternative_file_to_view = file
+        current_active_line = (
+            self.frames[self.active_frame_id].line if self.active_frame_id else None
+        )
+        source = SourceCodeView(
+            source=self.alternative_file_to_view,
+            source_center_line=line,
+            source_active_line=current_active_line,
+        )
+        return source
 
     @available_states("terminate", ["stopped", "errored"])
     async def terminate(self) -> str:
@@ -554,6 +623,7 @@ class Debugger:
         self.frames = {}
         self.active_frame_id = None
         self.active_thread_id = None
-        self.exception_raised = False
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
         await self.initialize()
         return "Debugger terminated"

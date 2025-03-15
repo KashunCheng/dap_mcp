@@ -1,7 +1,11 @@
 import json
-from dap_types import Variable, Scope
+from dap_types import Variable, Scope, ErrorResponse, Response
 from pydantic import BaseModel
-from typing import Optional, Tuple, Any, Callable
+from typing import Optional, Tuple, Any, Callable, Protocol
+
+
+class RenderableContent(Protocol):
+    def render(self) -> str: ...
 
 
 def is_plain_object(obj: Any) -> bool:
@@ -64,7 +68,9 @@ def render_scope(scope: Scope, variables: list[Variable]) -> str:
     )
 
 
-def render_table(active_id: Optional[int], lines: list[Tuple[int, str]]) -> str:
+def render_table(
+    active_id: Optional[int], lines: list[Tuple[int, str]], line_delimiter: str = "\n"
+) -> str:
     # print lines with active line marked
     # active_id is the index of the active line in lines.
     # lines: [(line_number, line_content)].
@@ -86,4 +92,21 @@ def render_table(active_id: Optional[int], lines: list[Tuple[int, str]]) -> str:
             formatted_lines.append(
                 f"{line_number:>{max_line_number_length}}    {line_content}"
             )
-    return "\n" + "\n".join(formatted_lines) + "\n"
+    return "\n" + line_delimiter.join(formatted_lines) + "\n"
+
+
+def render_response(r: Response) -> str:
+    if isinstance(r, ErrorResponse):
+        return render_xml(
+            "error", try_dump_base_model(r.body), command=r.command, message=r.message
+        )
+    return render_xml(
+        "response", try_dump_base_model(r.body), command=r.command, message=r.message
+    )
+
+
+def try_render(r: Response | RenderableContent) -> str:
+    if isinstance(r, Response):
+        return render_response(r)
+    else:
+        return r.render()

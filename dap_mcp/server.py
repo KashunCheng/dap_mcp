@@ -3,35 +3,19 @@ import sys
 import anyio
 import click
 import mcp.types as types
-from dap_types import LaunchRequestArguments, Response, SourceBreakpoint, ErrorResponse
+from dap_types import LaunchRequestArguments, SourceBreakpoint
 from mcp.server.lowlevel import Server
+from pathlib import Path
 from typing import Optional
 
-from dap_mcp.debugger import Debugger, RenderableContent
+from dap_mcp.debugger import Debugger, FunctionCallError
 from dap_mcp.factory import DAPClientSingletonFactory
-from dap_mcp.render import render_xml, try_dump_base_model
+from dap_mcp.render import render_xml, try_render
 
 import logging
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename="example.log", encoding="utf-8", level=logging.DEBUG)
-
-
-def render_response(r: Response) -> str:
-    if isinstance(r, ErrorResponse):
-        return render_xml(
-            "error", try_dump_base_model(r.body), command=r.command, message=r.message
-        )
-    return render_xml(
-        "response", try_dump_base_model(r.body), command=r.command, message=r.message
-    )
-
-
-def try_render(r: Response | RenderableContent) -> str:
-    if isinstance(r, Response):
-        return render_response(r)
-    else:
-        return r.render()
 
 
 @click.command()
@@ -68,15 +52,45 @@ def main(
     )
     debugger = Debugger(dap_factory, debuggee_cwd, launch_arguments)
 
+    def ensure_file_path(str_path: str) -> Path | None:
+        path = Path(str_path)
+        if not path.is_file():
+            if path.is_absolute():
+                return None
+            potential_path = Path(debuggee_cwd) / path
+            if potential_path.is_file():
+                return potential_path
+            potential_path = Path(debug_program_path).parent / path
+            if potential_path.is_file():
+                return potential_path
+            return None
+        return path
+
     async def launch():
         return (await debugger.launch()).render()
 
     async def set_breakpoint(path: str, line: int, condition: Optional[str] = None):
-        response = await debugger.set_breakpoint(path, line, condition)
+        file_path = ensure_file_path(path)
+        if file_path is None:
+            return FunctionCallError(message=f"File ({path}) not found").render()
+        response = await debugger.set_breakpoint(file_path, line, condition)
         return try_render(response)
 
     async def remove_breakpoint(path: str, line: int):
-        response = await debugger.remove_breakpoint(path, line)
+        file_path = ensure_file_path(path)
+        if file_path is None:
+            return FunctionCallError(message=f"File ({path}) not found").render()
+        response = await debugger.remove_breakpoint(file_path, line)
+        return try_render(response)
+
+    async def view_file_at_line(line: int, path: Optional[str] = None):
+        if path:
+            file_path = ensure_file_path(path)
+            if file_path is None:
+                return FunctionCallError(message=f"File ({path}) not found").render()
+        else:
+            file_path = None
+        response = await debugger.view_file_at_line(file_path, line)
         return try_render(response)
 
     async def list_all_breakpoints():
@@ -84,7 +98,7 @@ def main(
 
         def render_file(file: str, breakpoints: list[SourceBreakpoint]) -> str:
             return render_xml(
-                file,
+                "file",
                 [
                     render_xml("breakpoint", None, **sb.model_dump())
                     for sb in breakpoints
@@ -94,7 +108,10 @@ def main(
 
         return render_xml(
             "breakpoints",
-            [render_file(file, breakpoints) for file, breakpoints in response.items()],
+            [
+                render_file(str(file), breakpoints)
+                for file, breakpoints in response.items()
+            ],
         )
 
     async def continue_execution():
@@ -136,6 +153,15 @@ def main(
                     text=await remove_breakpoint(arguments["path"], arguments["line"]),
                 )
             ]
+        if name == "view_file_at_line":
+            return [
+                types.TextContent(
+                    type="text",
+                    text=await view_file_at_line(
+                        arguments["line"], arguments.get("path")
+                    ),
+                )
+            ]
         if name == "list_all_breakpoints":
             return [types.TextContent(type="text", text=await list_all_breakpoints())]
         if name == "continue_execution":
@@ -161,7 +187,7 @@ def main(
         return [
             types.Tool(
                 name="launch",
-                description="Launch the debuggee program.",
+                description="Launch the debuggee program. Set breakpoints before launching if necessary.",
                 inputSchema={"type": "object", "properties": {}},
             ),
             types.Tool(
@@ -246,6 +272,24 @@ def main(
                 name="terminate",
                 description="Terminate the current debugging session.",
                 inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="view_file_at_line",
+                description="Returns the source code around the specified line. If 'path' is provided, it opens that file; otherwise, it uses the last specified file. You must provide a file to read the source before launch as no prefilled paths exist.",
+                inputSchema={
+                    "type": "object",
+                    "required": ["line"],
+                    "properties": {
+                        "line": {
+                            "type": "integer",
+                            "description": "The line number around which the source code will be displayed.",
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional file path. Provide this to open a specific file; otherwise, the last specified file is used.",
+                        },
+                    },
+                },
             ),
         ]
 

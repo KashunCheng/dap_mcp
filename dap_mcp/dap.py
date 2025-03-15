@@ -39,9 +39,9 @@ class DAPClient:
 
     async def receive(self) -> Request | Response | Event:
         while True:
-            content_length = await self.stream_reader.readuntil(b"\r\n\r\n")
-            assert content_length is not None, "Connection closed"
-            content_length = int(content_length.decode("utf-8").split(": ")[1])
+            content_length_bytes = await self.stream_reader.readuntil(b"\r\n\r\n")
+            assert content_length_bytes is not None, "Connection closed"
+            content_length = int(content_length_bytes.decode("utf-8").split(": ")[1])
             message = await self.stream_reader.readexactly(content_length)
             logger.debug(f"server -> client: {message.decode('utf-8')}")
             message = json.loads(message)
@@ -57,7 +57,7 @@ class DAPClient:
                     )
                     return lossy_protocol_message
                 except ValidationError:
-                    logger.warning(f"Invalid message: {message}")
+                    logger.warning(f"Invalid message: {message.decode('utf-8')}")
 
     @staticmethod
     def _try_discriminate_response(request: Request, response: Response) -> Response:
