@@ -201,13 +201,11 @@ class Debugger:
     def __init__(
         self,
         factory: DAPFactory,
-        project_root: str,
         launch_arguments: LaunchRequestArguments,
     ):
         self.state: DebuggerState = "before_initialization"
         self._factory = factory
         self._client: Optional[DAPClient] = None
-        self.project_root = project_root
         self.breakpoints: dict[Path, list[SourceBreakpoint]] = {}
         self.launch_arguments = launch_arguments
         self.launch_request: Optional[LaunchRequest] = None

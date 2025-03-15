@@ -1,3 +1,4 @@
+import json
 import sys
 
 import anyio
@@ -6,8 +7,10 @@ import mcp.types as types
 from dap_types import LaunchRequestArguments, SourceBreakpoint
 from mcp.server.lowlevel import Server
 from pathlib import Path
-from typing import Optional
+from pydantic import TypeAdapter
+from typing import Optional, TextIO
 
+from dap_mcp.config import DebuggerSpecificConfig
 from dap_mcp.debugger import Debugger, FunctionCallError
 from dap_mcp.factory import DAPClientSingletonFactory
 from dap_mcp.render import render_xml, try_render
@@ -15,7 +18,6 @@ from dap_mcp.render import render_xml, try_render
 import logging
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename="example.log", encoding="utf-8", level=logging.DEBUG)
 
 
 @click.command()
@@ -26,43 +28,53 @@ logging.basicConfig(filename="example.log", encoding="utf-8", level=logging.DEBU
     default="stdio",
     help="Transport type",
 )
-@click.option("--debuggee-cwd", help="Working directory of the debuggee", required=True)
 @click.option(
-    "--debuggee-python", help="Python executable to use", default=sys.executable
+    "--verbose", "-v", is_flag=True, help="Enable verbose logging", default=False
 )
 @click.option(
-    "--debug-program-path", help="Path to the program to debug", required=True
+    "--config",
+    "-c",
+    "config_file",
+    help="Path to the configuration file",
+    required=True,
+    type=click.File("r"),
 )
 def main(
     port: int,
     transport: str,
-    debuggee_cwd: str,
-    debuggee_python: str,
-    debug_program_path: str,
+    verbose: bool,
+    config_file: TextIO,
 ) -> int:
-    app: Server[object] = Server("mcp-website-fetcher")
-    dap_factory = DAPClientSingletonFactory("python -m debugpy.adapter")
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+    debug_config_type_adapter = TypeAdapter(DebuggerSpecificConfig)
+    try:
+        json_config = json.load(config_file)
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing JSON configuration: {e}")
+        return 1
+    config = debug_config_type_adapter.validate_python(json_config)
+    app: Server[object] = Server("dap_mcp")
+    dap_factory = DAPClientSingletonFactory(config.debuggerPath, config.debuggerArgs)
     launch_arguments = LaunchRequestArguments(
         noDebug=False,
-        program=debug_program_path,
-        python=[debuggee_python],
-        args=[],
-        cwd=debuggee_cwd,
-        env={"PYTHONIOENCODING": "UTF-8", "PYTHONUNBUFFERED": "1"},
+        **{
+            k: v
+            for k, v in config.model_dump(exclude_none=True).items()
+            if k not in ["type", "debuggerPath", "debuggerArgs", "sourceDirs"]
+        },
     )
-    debugger = Debugger(dap_factory, debuggee_cwd, launch_arguments)
+    debugger = Debugger(dap_factory, launch_arguments)
 
     def ensure_file_path(str_path: str) -> Path | None:
         path = Path(str_path)
         if not path.is_file():
             if path.is_absolute():
                 return None
-            potential_path = Path(debuggee_cwd) / path
-            if potential_path.is_file():
-                return potential_path
-            potential_path = Path(debug_program_path).parent / path
-            if potential_path.is_file():
-                return potential_path
+            for potential_dir in config.sourceDirs:
+                potential_path = Path(potential_dir) / path
+                if potential_path.is_file():
+                    return potential_path
             return None
         return path
 
@@ -146,7 +158,6 @@ def main(
     async def call_tool(
         name: str, arguments: dict
     ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-        # find_active_loop()
         if name == "launch":
             return [types.TextContent(type="text", text=await launch())]
         if name == "set_breakpoint":

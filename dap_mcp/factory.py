@@ -13,8 +13,9 @@ class DAPFactory(Protocol):
 
 
 class DAPClientSingletonFactory:
-    def __init__(self, cmd: str, **kwargs):
+    def __init__(self, cmd: str, args: list[str], **kwargs):
         self.cmd = cmd
+        self.args = args
         self.kwargs = kwargs
         self.debugger_process: Optional[Process] = None
 
@@ -23,8 +24,9 @@ class DAPClientSingletonFactory:
             raise Exception(
                 "DAPClientSingletonFactory can only create one instance of DAPClient"
             )
-        adapter = await asyncio.subprocess.create_subprocess_shell(
+        adapter = await asyncio.subprocess.create_subprocess_exec(
             self.cmd,
+            *self.args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             **self.kwargs,
