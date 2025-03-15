@@ -1,18 +1,15 @@
 [project]
 name = "dap-mcp"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.12"
+description = "dap-mcp: A Debug Adapter Protocol (DAP) enabled Model Context Protocol (MCP) server that bridges debugging tools with AI systems, providing a standardized context for LLMs."
+requires-python = ">=3.10"
 dependencies = [
     "anyio>=4.8.0",
     "click>=8.1.8",
-    "dap-types",
+    "dap-types==20250315!1.70",
     "debugpy>=1.8.13",
     "mcp[cli]>=1.4.0",
 ]
-
-[tool.uv.sources]
-dap-types = { git = "https://gitea.isp.moe/jchen1192/dap_types.git" }
 
 [dependency-groups]
 dev = [

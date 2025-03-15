@@ -59,7 +59,7 @@ from dap_types import (
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import BaseModel
-from typing import Literal, Optional, List, Tuple, Callable, Any, Self
+from typing import Literal, Optional, List, Tuple, Callable, Any
 
 from dap_mcp.dap import DAPClient
 from dap_mcp.factory import DAPFactory
@@ -232,7 +232,7 @@ class Debugger:
     @staticmethod
     def available_states(operation: str, states: List[DebuggerState]):
         def decorator(function: Callable[..., Any]):
-            async def wrapper(self: Self, *args, **kwargs):
+            async def wrapper(self, *args, **kwargs):
                 if self.state not in states:
                     return FunctionCallError(
                         message=f"Cannot {operation} in {self.state} state\nAvailable actions for {self.state}: {self._get_available_actions()}."
