@@ -37,8 +37,8 @@ class DebugPy(DAPConfig):
     console: Optional[
         Literal["internalConsole", "integratedTerminal", "externalTerminal"]
     ] = Field(
-        "integratedTerminal",
-        description='Sets where to launch the debug target. Supported values: ["internalConsole", "integratedTerminal", "externalTerminal"]. Default is "integratedTerminal".',
+        "internalConsole",
+        description='Sets where to launch the debug target. Supported values: ["internalConsole", "integratedTerminal", "externalTerminal"]. Default is "internalConsole".',
     )
     cwd: Optional[str] = Field(
         None,

@@ -254,12 +254,16 @@ class Debugger:
                     self.modules.pop(event.body.module.id, None)
             if isinstance(event, StoppedEvent):
                 self.active_thread_id = event.body.threadId
+                logging.debug(f"Debugger state changed from {self.state} to stopped")
                 self.state = "stopped"
                 if event.body.reason == "exception":
                     self.exception_raised = True
             elif isinstance(event, TerminatedEvent):
-                self.state = "before_launch"
-                await self.terminate()
+                logging.debug(
+                    f"Debugger state changed from {self.state} to before_initialization"
+                )
+                self.state = "before_initialization"
+                await self._terminate()
         self.events += events
 
     def _pop_events(self) -> list[Event]:
@@ -286,6 +290,7 @@ class Debugger:
             self.active_frame_id = None
             self.active_thread_id = None
             self.frames = {}
+            logging.debug(f"Debugger state changed from {self.state} to launched")
             self.state = "launched"
         return response
 
@@ -314,6 +319,7 @@ class Debugger:
         if isinstance(response, ErrorResponse):
             logging.fatal(f"Failed to initialize debugger: {response.message}")
             raise RuntimeError("Failed to initialize debugger")
+        logging.debug(f"Debugger state changed from {self.state} to before_launch")
         self.state = "before_launch"
         self.launch_request = await self._send_launch_request()
         return response
@@ -480,7 +486,9 @@ class Debugger:
         return await self._update_breakpoints(path)
 
     @available_states("list all breakpoints", ["before_launch", "stopped", "errored"])
-    async def list_all_breakpoints(self) -> dict[Path, list[SourceBreakpoint]]:
+    async def list_all_breakpoints(
+        self,
+    ) -> dict[Path, list[SourceBreakpoint]] | FunctionCallError:
         return self.breakpoints
 
     @available_states("continue execution", ["stopped"])
@@ -677,7 +685,13 @@ class Debugger:
         return source
 
     @available_states("terminate", ["stopped", "errored"])
-    async def terminate(self) -> str:
+    async def terminate(self) -> str | FunctionCallError:
+        return await self._terminate()
+
+    async def _terminate(self) -> str:
+        logging.debug(
+            f"terminating debugger... self._client is not None: {self._client is not None}"
+        )
         if self._client:
             await self._factory.destroy_instance(self._client)
             self._client = None
@@ -692,5 +706,9 @@ class Debugger:
         self.active_thread_id = None
         self.alternative_center_line_to_view = None
         self.alternative_file_to_view = None
+        logging.debug(
+            f"Debugger initialized, state before initialization: {self.state}"
+        )
         await self.initialize()
+        logging.debug(f"Debugger initialized, state after initialization: {self.state}")
         return "Debugger terminated"

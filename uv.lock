@@ -67,7 +67,7 @@ wheels = [
 
 [[package]]
 name = "dap-mcp"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -87,7 +87,7 @@ dev = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.8.0" },
     { name = "click", specifier = ">=8.1.8" },
-    { name = "dap-types", specifier = "==20250315!1.70" },
+    { name = "dap-types", specifier = "==20250315!1.70.post1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.4.0" },
 ]
 
@@ -100,14 +100,14 @@ dev = [
 
 [[package]]
 name = "dap-types"
-version = "20250315!1.70"
+version = "20250315!1.70.post1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/0c/4df0cc1d64270faaf774fb99841d9aec3da08a548a4a3de50e04106d78ba/dap_types-20250315!1.70.tar.gz", hash = "sha256:52dc3d391fe82497aeb56f50305e577fb32079c9aefc76a05d47d73c394209b3", size = 50251 }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/ac/a308ade2966d790598c2ef66dd6d32e695cf757c80d125c805a614e56d05/dap_types-20250315!1.70.post1.tar.gz", hash = "sha256:c9d9aee089b23ee556f58db4af1b7bcc30ce8e2e8602f70904d25f3a518a490a", size = 53907 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/97/bb1f9fb2cd19e707fac7d475bffb2780944c2701c8eab9621463d10d0ab7/dap_types-20250315!1.70-py3-none-any.whl", hash = "sha256:3032db0d0a47a365c0a28acb44432482c7e2903c422a0af2a681fb03ed9b1900", size = 25785 },
+    { url = "https://files.pythonhosted.org/packages/e8/7e/c1cb7de55591906266c97114829dec04f977fd673afac5c8af8aadb85908/dap_types-20250315!1.70.post1-py3-none-any.whl", hash = "sha256:8e9199f88438e86eed9c66997779708c078a472e3dd548ec9c001111665abeb6", size = 25843 },
 ]
 
 [[package]]

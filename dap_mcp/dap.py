@@ -35,6 +35,7 @@ class DAPClient:
         message = headers + encoded
 
         self.stream_writer.write(message)
+        await self.stream_writer.drain()
         logger.debug(f"client -> server: {encoded.decode('utf-8')}")
 
     async def receive(self) -> Request | Response | Event:

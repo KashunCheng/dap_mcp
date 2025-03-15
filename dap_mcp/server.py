@@ -46,7 +46,7 @@ def main(
     config_file: TextIO,
 ) -> int:
     if verbose:
-        logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
     debug_config_type_adapter = TypeAdapter(DebuggerSpecificConfig)
     try:
         json_config = json.load(config_file)
@@ -107,6 +107,8 @@ def main(
 
     async def list_all_breakpoints():
         response = await debugger.list_all_breakpoints()
+        if isinstance(response, FunctionCallError):
+            return response.render()
 
         def render_file(file: str, breakpoints: list[SourceBreakpoint]) -> str:
             return render_xml(
@@ -152,12 +154,29 @@ def main(
 
     async def terminate():
         response = await debugger.terminate()
+        if isinstance(response, FunctionCallError):
+            return response.render()
         return response
 
     @app.call_tool()
     async def call_tool(
         name: str, arguments: dict
     ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+        if name == "get_launch_config":
+            config_schema = json.dumps(type(config).model_json_schema())
+            config_json = json.dumps(config.model_dump(exclude_none=True))
+            return [
+                types.TextContent(
+                    type="text",
+                    text=render_xml(
+                        "config",
+                        [
+                            render_xml("schema", config_schema),
+                            render_xml("data", config_json),
+                        ],
+                    ),
+                )
+            ]
         if name == "launch":
             return [types.TextContent(type="text", text=await launch())]
         if name == "set_breakpoint":
@@ -214,6 +233,11 @@ def main(
     @app.list_tools()
     async def list_tools() -> list[types.Tool]:
         return [
+            types.Tool(
+                name="get_launch_config",
+                description="Returns the user provided launch configuration along with its detailed schema for a DAP-compatible debugger. The schema includes descriptions for each field.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
             types.Tool(
                 name="launch",
                 description="Launch the debuggee program. Set breakpoints before launching if necessary.",
@@ -319,7 +343,7 @@ def main(
             ),
             types.Tool(
                 name="view_file_at_line",
-                description="Returns the source code around the specified line. If 'path' is provided, it opens that file; otherwise, it uses the last specified file. You must provide a file to read the source before launch as no prefilled paths exist.",
+                description="Returns the lines of source code and the source code around the specified line. You should ALWAYS prefer this tool if you are reading code. Because it will show the line number, which is crucial for debugging. If 'path' is provided, it opens that file; otherwise, it uses the last specified file. You must provide a file to read the source before launch as no prefilled paths exist.",
                 inputSchema={
                     "type": "object",
                     "required": ["line"],

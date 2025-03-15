@@ -1,12 +1,12 @@
 [project]
 name = "dap-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "dap-mcp: A Debug Adapter Protocol (DAP) enabled Model Context Protocol (MCP) server that bridges debugging tools with AI systems, providing a standardized context for LLMs."
 requires-python = ">=3.10"
 dependencies = [
     "anyio>=4.8.0",
     "click>=8.1.8",
-    "dap-types==20250315!1.70",
+    "dap-types==20250315!1.70.post1",
     "mcp[cli]>=1.4.0",
 ]
 
