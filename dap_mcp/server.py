@@ -118,6 +118,18 @@ def main(
         response = await debugger.continue_execution()
         return try_render(response)
 
+    async def step_in():
+        response = await debugger.step_in()
+        return try_render(response)
+
+    async def step_out():
+        response = await debugger.step_out()
+        return try_render(response)
+
+    async def next():
+        response = await debugger.next()
+        return try_render(response)
+
     async def evaluate(expression: str):
         response = await debugger.evaluate(expression)
         return try_render(response)
@@ -166,6 +178,12 @@ def main(
             return [types.TextContent(type="text", text=await list_all_breakpoints())]
         if name == "continue_execution":
             return [types.TextContent(type="text", text=await continue_execution())]
+        if name == "step_in":
+            return [types.TextContent(type="text", text=await step_in())]
+        if name == "step_out":
+            return [types.TextContent(type="text", text=await step_out())]
+        if name == "next":
+            return [types.TextContent(type="text", text=await next())]
         if name == "evaluate":
             return [
                 types.TextContent(
@@ -238,6 +256,21 @@ def main(
             types.Tool(
                 name="continue_execution",
                 description="Continue execution in the debugger after hitting a breakpoint.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="step_in",
+                description="Step into the function call in the debugger.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="step_out",
+                description="Step out of the current function in the debugger.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="next",
+                description="Step over to the next line of code in the debugger.",
                 inputSchema={"type": "object", "properties": {}},
             ),
             types.Tool(

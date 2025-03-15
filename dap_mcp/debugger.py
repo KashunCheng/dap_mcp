@@ -49,6 +49,12 @@ from dap_types import (
     SetExceptionBreakpointsRequest,
     SetExceptionBreakpointsArguments,
     SetExceptionBreakpointsResponse,
+    StepInRequest,
+    StepInArguments,
+    StepOutRequest,
+    StepOutArguments,
+    NextRequest,
+    NextArguments,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -493,6 +499,69 @@ class Debugger:
         response = await self._wait_for_request(request)
         if isinstance(response, ErrorResponse):
             raise RuntimeError("Error handing for continue is not implemented")
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
+        await self._wait_for_event_types({"stopped", "terminated"})
+        if self.state != "stopped":
+            return EventListView(events=self._pop_events())
+        return await self._get_stopped_debugger_view()
+
+    @available_states("step in", ["stopped"])
+    async def step_in(
+        self,
+    ) -> FunctionCallError | StoppedDebuggerView | EventListView:
+        request = StepInRequest(
+            seq=0,
+            type="request",
+            command="stepIn",
+            arguments=StepInArguments(threadId=self.active_thread_id),
+        )
+        await self._send_request(request)
+        response = await self._wait_for_request(request)
+        if isinstance(response, ErrorResponse):
+            raise RuntimeError("Error handing for step in is not implemented")
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
+        await self._wait_for_event_types({"stopped", "terminated"})
+        if self.state != "stopped":
+            return EventListView(events=self._pop_events())
+        return await self._get_stopped_debugger_view()
+
+    @available_states("step out", ["stopped"])
+    async def step_out(
+        self,
+    ) -> FunctionCallError | StoppedDebuggerView | EventListView:
+        request = StepOutRequest(
+            seq=0,
+            type="request",
+            command="stepOut",
+            arguments=StepOutArguments(threadId=self.active_thread_id),
+        )
+        await self._send_request(request)
+        response = await self._wait_for_request(request)
+        if isinstance(response, ErrorResponse):
+            raise RuntimeError("Error handing for step out is not implemented")
+        self.alternative_center_line_to_view = None
+        self.alternative_file_to_view = None
+        await self._wait_for_event_types({"stopped", "terminated"})
+        if self.state != "stopped":
+            return EventListView(events=self._pop_events())
+        return await self._get_stopped_debugger_view()
+
+    @available_states("next", ["stopped"])
+    async def next(
+        self,
+    ) -> FunctionCallError | StoppedDebuggerView | EventListView:
+        request = NextRequest(
+            seq=0,
+            type="request",
+            command="next",
+            arguments=NextArguments(threadId=self.active_thread_id),
+        )
+        await self._send_request(request)
+        response = await self._wait_for_request(request)
+        if isinstance(response, ErrorResponse):
+            raise RuntimeError("Error handing for next is not implemented")
         self.alternative_center_line_to_view = None
         self.alternative_file_to_view = None
         await self._wait_for_event_types({"stopped", "terminated"})
