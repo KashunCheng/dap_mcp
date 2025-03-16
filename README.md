@@ -118,4 +118,4 @@ Please follow the coding guidelines and include appropriate tests with your chan
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the AGPL-3.0 License. See the [LICENSE](LICENSE) file for details.
