@@ -54,14 +54,21 @@ def render_xml(tag: str, content: str | list[str] | None, **attrs) -> str:
     return f"<{tag_with_attr_str}/>"
 
 
-def render_variable(variable: Variable) -> str:
-    return render_xml("variable", None, **variable.model_dump(exclude_none=True))
+def render_variable(variable: Variable, max_variable_expr_length: Optional[int]) -> str:
+    value = variable.value
+    if max_variable_expr_length is not None and len(value) > max_variable_expr_length:
+        value = value[:max_variable_expr_length] + "...(truncated)"
+    return render_xml(
+        "variable", value, **variable.model_dump(exclude_none=True, exclude={"value"})
+    )
 
 
-def render_scope(scope: Scope, variables: list[Variable]) -> str:
+def render_scope(
+    scope: Scope, variables: list[Variable], max_variable_expr_length: Optional[int]
+) -> str:
     return render_xml(
         "scope",
-        [render_variable(variable) for variable in variables],
+        [render_variable(variable, max_variable_expr_length) for variable in variables],
         name=scope.name,
         line=scope.line,
         column=scope.column,

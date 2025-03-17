@@ -8,7 +8,7 @@ from dap_types import LaunchRequestArguments, SourceBreakpoint
 from mcp.server.lowlevel import Server
 from pathlib import Path
 from pydantic import TypeAdapter
-from typing import Optional, TextIO
+from typing import Optional, TextIO, Literal
 
 from dap_mcp.config import DebuggerSpecificConfig
 from dap_mcp.debugger import Debugger, FunctionCallError
@@ -58,13 +58,12 @@ def main(
     dap_factory = DAPClientSingletonFactory(config.debuggerPath, config.debuggerArgs)
     launch_arguments = LaunchRequestArguments(
         noDebug=False,
-        **{
-            k: v
-            for k, v in config.model_dump(exclude_none=True).items()
-            if k not in ["type", "debuggerPath", "debuggerArgs", "sourceDirs"]
-        },
+        **config.model_dump(
+            exclude_none=True,
+            exclude={"type", "debuggerPath", "debuggerArgs", "sourceDirs", "tools"},
+        ),
     )
-    debugger = Debugger(dap_factory, launch_arguments)
+    debugger = Debugger(dap_factory, launch_arguments, config.tools)
 
     def ensure_file_path(str_path: str) -> Path | None:
         path = Path(str_path)
@@ -95,15 +94,21 @@ def main(
         response = await debugger.remove_breakpoint(file_path, line)
         return try_render(response)
 
-    async def view_file_at_line(line: int, path: Optional[str] = None):
+    async def view_file_around_line(line: int, path: Optional[str] = None):
         if path:
             file_path = ensure_file_path(path)
             if file_path is None:
                 return FunctionCallError(message=f"File ({path}) not found").render()
         else:
             file_path = None
-        response = await debugger.view_file_at_line(file_path, line)
+        response = await debugger.view_file_around_line(file_path, line)
         return try_render(response)
+
+    async def remove_all_breakpoints():
+        response = await debugger.remove_all_breakpoints()
+        if isinstance(response, FunctionCallError):
+            return response.render()
+        return "All breakpoints removed"
 
     async def list_all_breakpoints():
         response = await debugger.list_all_breakpoints()
@@ -162,7 +167,7 @@ def main(
     async def call_tool(
         name: str, arguments: dict
     ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-        if name == "get_launch_config":
+        if name == "get_launch_config" and config.tools.getLaunchConfig.enabled:
             config_schema = json.dumps(type(config).model_json_schema())
             config_json = json.dumps(config.model_dump(exclude_none=True))
             return [
@@ -177,9 +182,9 @@ def main(
                     ),
                 )
             ]
-        if name == "launch":
+        if name == "launch" and config.tools.launch.enabled:
             return [types.TextContent(type="text", text=await launch())]
-        if name == "set_breakpoint":
+        if name == "set_breakpoint" and config.tools.setBreakpoint.enabled:
             return [
                 types.TextContent(
                     type="text",
@@ -188,62 +193,70 @@ def main(
                     ),
                 )
             ]
-        if name == "remove_breakpoint":
+        if name == "remove_breakpoint" and config.tools.removeBreakpoint.enabled:
             return [
                 types.TextContent(
                     type="text",
                     text=await remove_breakpoint(arguments["path"], arguments["line"]),
                 )
             ]
-        if name == "view_file_at_line":
+        if name == "view_file_around_line" and config.tools.viewFileAroundLine.enabled:
             return [
                 types.TextContent(
                     type="text",
-                    text=await view_file_at_line(
+                    text=await view_file_around_line(
                         arguments["line"], arguments.get("path")
                     ),
                 )
             ]
-        if name == "list_all_breakpoints":
+        if (
+            name == "remove_all_breakpoints"
+            and config.tools.removeAllBreakpoints.enabled
+        ):
+            return [types.TextContent(type="text", text=await remove_all_breakpoints())]
+        if name == "list_all_breakpoints" and config.tools.listAllBreakpoints.enabled:
             return [types.TextContent(type="text", text=await list_all_breakpoints())]
-        if name == "continue_execution":
+        if name == "continue_execution" and config.tools.continueExecution.enabled:
             return [types.TextContent(type="text", text=await continue_execution())]
-        if name == "step_in":
+        if name == "step_in" and config.tools.stepIn.enabled:
             return [types.TextContent(type="text", text=await step_in())]
-        if name == "step_out":
+        if name == "step_out" and config.tools.stepOut.enabled:
             return [types.TextContent(type="text", text=await step_out())]
-        if name == "next":
+        if name == "next" and config.tools.next.enabled:
             return [types.TextContent(type="text", text=await next())]
-        if name == "evaluate":
+        if name == "evaluate" and config.tools.evaluate.enabled:
             return [
                 types.TextContent(
                     type="text", text=await evaluate(arguments["expression"])
                 )
             ]
-        if name == "change_frame":
+        if name == "change_frame" and config.tools.changeFrame.enabled:
             return [
                 types.TextContent(
                     type="text", text=await change_frame(arguments["frameId"])
                 )
             ]
-        if name == "terminate":
+        if name == "terminate" and config.tools.terminate.enabled:
             return [types.TextContent(type="text", text=await terminate())]
         raise ValueError(f"Unknown tool: {name}")
 
     @app.list_tools()
     async def list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
+        tool_list: list[types.Tool | Literal[False]] = [
+            config.tools.getLaunchConfig.enabled
+            and types.Tool(
                 name="get_launch_config",
                 description="Returns the user provided launch configuration along with its detailed schema for a DAP-compatible debugger. The schema includes descriptions for each field.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.launch.enabled
+            and types.Tool(
                 name="launch",
                 description="Launch the debuggee program. Set breakpoints before launching if necessary.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.setBreakpoint.enabled
+            and types.Tool(
                 name="set_breakpoint",
                 description="Set a breakpoint at the specified file and line with an optional condition.",
                 inputSchema={
@@ -265,7 +278,8 @@ def main(
                     },
                 },
             ),
-            types.Tool(
+            config.tools.removeBreakpoint.enabled
+            and types.Tool(
                 name="remove_breakpoint",
                 description="Remove a breakpoint from the specified file and line.",
                 inputSchema={
@@ -283,32 +297,44 @@ def main(
                     },
                 },
             ),
-            types.Tool(
+            config.tools.listAllBreakpoints.enabled
+            and types.Tool(
                 name="list_all_breakpoints",
                 description="List all breakpoints currently set in the debugger.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.removeAllBreakpoints.enabled
+            and types.Tool(
+                name="remove_all_breakpoints",
+                description="Remove all breakpoints currently set in the debugger.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            config.tools.continueExecution.enabled
+            and types.Tool(
                 name="continue_execution",
                 description="Continue execution in the debugger after hitting a breakpoint.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.stepIn.enabled
+            and types.Tool(
                 name="step_in",
                 description="Step into the function call in the debugger.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.stepOut.enabled
+            and types.Tool(
                 name="step_out",
                 description="Step out of the current function in the debugger.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.next.enabled
+            and types.Tool(
                 name="next",
                 description="Step over to the next line of code in the debugger.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
+            config.tools.evaluate.enabled
+            and types.Tool(
                 name="evaluate",
                 description="Evaluate an expression in the current debugging context.",
                 inputSchema={
@@ -322,7 +348,8 @@ def main(
                     },
                 },
             ),
-            types.Tool(
+            config.tools.changeFrame.enabled
+            and types.Tool(
                 name="change_frame",
                 description="Change the current debugging frame to the specified frame ID.",
                 inputSchema={
@@ -336,13 +363,15 @@ def main(
                     },
                 },
             ),
-            types.Tool(
+            config.tools.terminate.enabled
+            and types.Tool(
                 name="terminate",
                 description="Terminate the current debugging session.",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            types.Tool(
-                name="view_file_at_line",
+            config.tools.viewFileAroundLine.enabled
+            and types.Tool(
+                name="view_file_around_line",
                 description="Returns the lines of source code and the source code around the specified line. You should ALWAYS prefer this tool if you are reading code. Because it will show the line number, which is crucial for debugging. If 'path' is provided, it opens that file; otherwise, it uses the last specified file. You must provide a file to read the source before launch as no prefilled paths exist.",
                 inputSchema={
                     "type": "object",
@@ -360,6 +389,7 @@ def main(
                 },
             ),
         ]
+        return [tool for tool in tool_list if tool]
 
     if transport == "sse":
         from mcp.server.sse import SseServerTransport

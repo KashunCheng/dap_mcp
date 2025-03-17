@@ -61,6 +61,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import Literal, Optional, List, Tuple, Callable, Any
 
+from dap_mcp.config import DAPToolsConfig
 from dap_mcp.dap import DAPClient
 from dap_mcp.factory import DAPFactory
 from dap_mcp.render import render_table, render_scope, render_xml, try_dump_base_model
@@ -137,19 +138,29 @@ class StoppedDebuggerView:
     variables: List[Tuple[Scope, List[Variable]]]
     events: EventListView
     exception_info: Optional[ExceptionInfoResponseBody]
+    render_variables: bool = True
+    max_variable_expr_length: Optional[int] = None
 
     def render(self) -> str:
         return render_xml(
             "debugger_view",
-            [
-                self.source.render(),
-                render_xml(
-                    "variables",
-                    [
-                        render_scope(scope, variables)
-                        for scope, variables in self.variables
-                    ],
-                ),
+            [self.source.render()]
+            + (
+                [
+                    render_xml(
+                        "variables",
+                        [
+                            render_scope(
+                                scope, variables, self.max_variable_expr_length
+                            )
+                            for scope, variables in self.variables
+                        ],
+                    )
+                ]
+                if self.render_variables
+                else []
+            )
+            + [
                 render_xml(
                     "frames",
                     render_table(
@@ -202,7 +213,12 @@ class Debugger:
         self,
         factory: DAPFactory,
         launch_arguments: LaunchRequestArguments,
+        config_or_none: DAPToolsConfig | None = None,
     ):
+        if config_or_none is None:
+            self._config = DAPToolsConfig()
+        else:
+            self._config = config_or_none
         self.state: DebuggerState = "before_initialization"
         self._factory = factory
         self._client: Optional[DAPClient] = None
@@ -433,14 +449,19 @@ class Debugger:
         assert self.active_frame_id is not None, (
             "Active frame is not set, this should be set via Events"
         )
-        scopes = await self._get_scopes(self.active_frame_id)
-        variables = [
-            (
-                scope,
-                (await self._get_variables(scope.variablesReference)).body.variables,
-            )
-            for scope in scopes.body.scopes
-        ]
+        if self._config.debuggerView.showVariables:
+            scopes = await self._get_scopes(self.active_frame_id)
+            variables = [
+                (
+                    scope,
+                    (
+                        await self._get_variables(scope.variablesReference)
+                    ).body.variables,
+                )
+                for scope in scopes.body.scopes
+            ]
+        else:
+            variables = []
         if self.state == "errored":
             exception_info = (await self._get_exception_info()).body
         else:
@@ -462,6 +483,7 @@ class Debugger:
             variables=variables,
             events=EventListView(events=self._pop_events()),
             exception_info=exception_info,
+            render_variables=self._config.debuggerView.showVariables,
         )
 
     @available_states("set breakpoint", ["before_launch", "stopped", "errored"])
@@ -490,6 +512,15 @@ class Debugger:
         self,
     ) -> dict[Path, list[SourceBreakpoint]] | FunctionCallError:
         return self.breakpoints
+
+    @available_states("remove all breakpoints", ["before_launch", "stopped", "errored"])
+    async def remove_all_breakpoints(
+        self,
+    ) -> None | FunctionCallError:
+        for path in self.breakpoints:
+            await self._update_breakpoints(path)
+        self.breakpoints = {}
+        return None
 
     @available_states("continue execution", ["stopped"])
     async def continue_execution(
@@ -657,10 +688,10 @@ class Debugger:
         return await self._get_stopped_debugger_view()
 
     @available_states(
-        "view file at line",
+        "view file around line",
         ["before_initialization", "before_launch", "launched", "errored", "stopped"],
     )
-    async def view_file_at_line(
+    async def view_file_around_line(
         self, file: Optional[Path], line: int
     ) -> SourceCodeView | FunctionCallError:
         if (
