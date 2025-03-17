@@ -75,7 +75,7 @@ The project exposes several tools that can be invoked via the MCP framework:
 - **next:** Step over to the next line of code.
 - **evaluate:** Evaluate an expression in the current debugging context.
 - **change_frame:** Switch to a different stack frame.
-- **view_file_at_line:** View source code around a specified line (using the last provided file if none is specified).
+- **view_file_around_line:** View source code around a specified line (using the last provided file if none is specified).
 - **terminate:** Terminate the debugging session.
 
 These tools provide XML-rendered output for integration with MCP clients.
