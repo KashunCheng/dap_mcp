@@ -202,4 +202,105 @@ class DebugPy(DAPConfig):
     )
 
 
-DebuggerSpecificConfig = Annotated[Union[DebugPy], Field(..., discriminator="type")]
+class LLDB(DAPConfig):
+    type: Literal["lldb"]
+    name: str = Field(
+        ..., description="A configuration name that will be displayed in the IDE."
+    )
+    request: Literal["launch", "attach"] = Field(
+        ...,
+        description='Specifies the request type. Must be either "launch" or "attach".',
+    )
+    program: str = Field(
+        ..., description="Path to the executable to launch or attach to."
+    )
+    # Source mapping and working directory settings
+    sourcePath: Optional[str] = Field(
+        None,
+        description='Specify a source path to remap "./" for resolving breakpoints in binaries with relative source paths.',
+    )
+    sourceMap: Optional[List[List[str]]] = Field(
+        None,
+        description="Array of source path re-mappings. Each element is a two-element array: [source, destination].",
+    )
+    debuggerRoot: Optional[str] = Field(
+        None,
+        description="Working directory for launching lldb-dap, used to resolve relative paths in debug information.",
+    )
+    # LLDB command and formatting settings
+    commandEscapePrefix: Optional[str] = Field(
+        "`",
+        description="Escape prefix for executing regular LLDB commands in the Debug Console. Defaults to a backtick.",
+    )
+    customFrameFormat: Optional[str] = Field(
+        None,
+        description="Custom format string for generating stack frame descriptions.",
+    )
+    customThreadFormat: Optional[str] = Field(
+        None, description="Custom format string for generating thread descriptions."
+    )
+    displayExtendedBacktrace: Optional[bool] = Field(
+        False, description="Enable language-specific extended backtraces."
+    )
+    enableAutoVariableSummaries: Optional[bool] = Field(
+        False, description="Enable auto-generated summaries for variables."
+    )
+    enableSyntheticChildDebugging: Optional[bool] = Field(
+        False,
+        description="When true, also display raw variable contents for synthetic children.",
+    )
+    # LLDB command sequences
+    initCommands: Optional[List[str]] = Field(
+        None,
+        description="LLDB commands executed upon debugger startup before target creation.",
+    )
+    preRunCommands: Optional[List[str]] = Field(
+        None,
+        description="LLDB commands executed just before launching/attaching, after the target has been created.",
+    )
+    stopCommands: Optional[List[str]] = Field(
+        None, description="LLDB commands executed immediately after each stop."
+    )
+    exitCommands: Optional[List[str]] = Field(
+        None, description="LLDB commands executed when the program exits."
+    )
+    terminateCommands: Optional[List[str]] = Field(
+        None, description="LLDB commands executed when the debugging session ends."
+    )
+    # Launch configuration settings (for "launch" request)
+    args: Optional[List[str]] = Field(
+        None, description="Command line arguments passed to the program."
+    )
+    cwd: Optional[str] = Field(
+        None, description="Working directory of the program being launched."
+    )
+    env: Optional[Dict[str, str]] = Field(
+        None,
+        description="Environment variables to set when launching the program. Format: {'VAR': 'VALUE'}.",
+    )
+    stopOnEntry: Optional[bool] = Field(
+        False, description="Whether to stop the program immediately after launch."
+    )
+    runInTerminal: Optional[bool] = Field(
+        False,
+        description="Launch the program in an integrated terminal. Useful for interactive programs.",
+    )
+    launchCommands: Optional[List[str]] = Field(
+        None, description="LLDB commands executed to launch the program."
+    )
+    # Attach configuration settings (for "attach" request)
+    pid: Optional[int] = Field(
+        None,
+        description="The process ID of the process to attach to. If omitted, lldb-dap will try to resolve the process by name.",
+    )
+    waitFor: Optional[bool] = Field(
+        False, description="Wait for the process to launch before attaching."
+    )
+    attachCommands: Optional[List[str]] = Field(
+        None, description="LLDB commands executed after preRunCommands during attach."
+    )
+
+
+DebuggerSpecificConfig = Annotated[
+    Union[DebugPy, LLDB], Field(..., discriminator="type")
+]

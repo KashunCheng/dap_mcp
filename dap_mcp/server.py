@@ -47,7 +47,9 @@ def main(
 ) -> int:
     if verbose:
         logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
-    debug_config_type_adapter = TypeAdapter(DebuggerSpecificConfig)
+    debug_config_type_adapter: TypeAdapter[DebuggerSpecificConfig] = TypeAdapter(
+        DebuggerSpecificConfig
+    )
     try:
         json_config = json.load(config_file)
     except json.JSONDecodeError as e:
@@ -60,7 +62,7 @@ def main(
         noDebug=False,
         **config.model_dump(
             exclude_none=True,
-            exclude={"type", "debuggerPath", "debuggerArgs", "sourceDirs", "tools"},
+            exclude={"debuggerPath", "debuggerArgs", "sourceDirs", "tools"},
         ),
     )
     debugger = Debugger(dap_factory, launch_arguments, config.tools)

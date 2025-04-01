@@ -61,6 +61,12 @@ This configuration informs the debugger about:
 - The source directories for resolving file paths during breakpoint operations.
 - Other settings (such as module, working directory, and interpreter path) necessary for launching the debuggee.
 
+### Available Debugger Types
+| Type    | Example Path        | Example Args                |
+|---------|---------------------|-----------------------------|
+| debugpy | `/usr/bin/python3`  | `["-m", "debugpy.adapter"]` |
+| lldb    | `/usr/bin/lldb-dap` | `[]`                        |
+
 ## Available Tools
 
 The project exposes several tools that can be invoked via the MCP framework:

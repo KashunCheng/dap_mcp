@@ -168,7 +168,15 @@ class StoppedDebuggerView:
                         [
                             (
                                 frame.id,
-                                f"{frame.name}\tpath={frame.source.path}\tline={frame.line}\tcol={frame.column}",
+                                "\t".join(
+                                    [frame.name]
+                                    + (
+                                        [f"path={frame.source.path}"]
+                                        if frame.source
+                                        else []
+                                    )
+                                    + [f"line={frame.line}", f"col={frame.column}"]
+                                ),
                             )
                             for frame in self.frames
                         ],

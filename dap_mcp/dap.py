@@ -78,7 +78,7 @@ class DAPClient:
                 if message.request_seq == request.seq:
                     return self._try_discriminate_response(request, message), events
                 else:
-                    self.response_received[message.seq] = message
+                    self.response_received[message.request_seq] = message
             elif isinstance(message, Event):
                 events.append(message)
             else:
