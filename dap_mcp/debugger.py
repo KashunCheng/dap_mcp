@@ -479,7 +479,12 @@ class Debugger:
         )
         return StoppedDebuggerView(
             source=SourceCodeView(
-                source=self.alternative_file_to_view or Path(current_frame.source.path),
+                source=self.alternative_file_to_view
+                or (
+                    None
+                    if current_frame.source is None
+                    else Path(current_frame.source.path)
+                ),
                 source_center_line=self.alternative_center_line_to_view
                 or current_frame.line,
                 source_active_line=current_frame.line,
